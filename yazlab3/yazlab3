@@ -1,0 +1,212 @@
+from flask import Flask, render_template, request, redirect, url_for, flash, session, jsonify
+from pymongo import MongoClient
+import fasttext
+import os
+import numpy as np
+from sklearn.metrics.pairwise import cosine_similarity
+import torch
+from transformers import AutoModel, AutoTokenizer
+
+model_path = r"C:\Users\Vahit Yüksel\Desktop\python\yazlab3\cc.en.300.bin"
+
+model = fasttext.load_model(model_path)
+
+app = Flask(__name__)
+app.secret_key = b'_5#y2L"F4Q8z\n\xec]/'
+
+client = MongoClient('mongodb://localhost:27017/')
+db = client['kisi_veritabani']
+koleksiyon = db['bilgiler']
+
+kelimeler = ["problem", "processing", "system", "graph", "routing", "memory", "program", "design", 
+             "complexity", "performance", "linear", "and", "algorithm", "method", "control", 
+             "model", "logic", "learning", "scheduling", "of", "optimization", "software", 
+             "distributed", "networks", "methods", "parallel", "algorithms", "analysis", 
+             "programming", "data", "systems"]
+
+@app.route('/')
+def index():
+    return render_template('login.html')
+
+@app.route('/giris', methods=['POST'])
+def giris():
+    kullanici_adi = request.form['kullanici_adi']
+    sifre = request.form['sifre']
+
+    kullanici = koleksiyon.find_one({'kullanici_adi': kullanici_adi, 'sifre': sifre})
+    if kullanici:
+        session['kullanici_adi'] = kullanici_adi
+        return redirect(url_for('anasayfa'))
+    else:
+        flash('Kullanıcı adı veya şifre yanlış, lütfen tekrar deneyin.', 'danger')
+        return redirect(url_for('index'))
+
+@app.route('/anasayfa')
+def anasayfa():
+    kullanici_adi = session.get('kullanici_adi')
+    
+    if not kullanici_adi:
+        return redirect(url_for('index'))
+
+    ilgi_alanlari = get_interests(kullanici_adi)
+    makaleler_dizini = r"C:\Users\Vahit Yüksel\Desktop\python\yazlab3\dogal_dil_sonuc"
+    ortalama_vektorler = []
+    temp_file_path = "temp_file.txt"
+    try:
+        with open(temp_file_path, "w") as temp_file:
+            temp_file.write("Geçici veri")
+        for dosya in os.listdir(makaleler_dizini):
+            if dosya.endswith(".txt"):
+                dosya_yolu = os.path.join(makaleler_dizini, dosya)
+                with open(dosya_yolu, "r", encoding="utf-8") as dosya:
+                    makale_metni = dosya.read().replace('\n', ' ')
+                    if any(kelime in makale_metni for kelime in ilgi_alanlari):
+                        vektor = model.get_sentence_vector(makale_metni)
+                        ortalama_vektorler.append(vektor)
+
+        ortalama_vektorler_np = np.array(ortalama_vektorler)
+        ortalama_vektor = np.mean(ortalama_vektorler_np, axis=0)
+        tum_vektorler = np.array([model.get_sentence_vector(open(os.path.join(makaleler_dizini, dosya), "r", encoding="utf-8").read().replace('\n', ' ')) for dosya in os.listdir(makaleler_dizini) if dosya.endswith(".txt")])
+        benzerlikler = cosine_similarity(tum_vektorler, [ortalama_vektor])
+        benzerlik_listesi = [(dosya, benzerlik[0]) for dosya, benzerlik in zip(os.listdir(makaleler_dizini), benzerlikler)]
+        benzerlik_listesi_sirali = sorted(benzerlik_listesi, key=lambda x: x[1], reverse=True)
+        en_yuksek_5 = benzerlik_listesi_sirali[:5]
+
+
+        tokenizer = AutoTokenizer.from_pretrained("allenai/scibert_scivocab_uncased")
+        model2 = AutoModel.from_pretrained("allenai/scibert_scivocab_uncased")
+
+        def get_scibert_embeddings(text):
+            inputs = tokenizer(text, return_tensors='pt', truncation=True, padding=True, max_length=15)
+            with torch.no_grad():
+                outputs = model2(**inputs)
+            embeddings = outputs.last_hidden_state.mean(dim=1)
+            return embeddings
+
+        def compute_cosine_similarity(vec1, vec2):
+            vec1 = vec1.reshape(1, -1)
+            vec2 = vec2.reshape(1, -1)
+            return cosine_similarity(vec1, vec2)[0][0]
+        
+        def get_average_embedding(words):
+            embeddings = [get_scibert_embeddings(word) for word in words]
+            average_embedding = torch.mean(torch.stack(embeddings), dim=0)
+            return average_embedding
+
+        makale_vektorleri = np.load('makale_vektorleri.npy', allow_pickle=True).item()
+        word_vector = get_average_embedding(ilgi_alanlari)
+
+        similarities = {}
+        for key, vec in makale_vektorleri.items():
+            vec_tensor = torch.tensor(vec)
+            similarity = compute_cosine_similarity(word_vector, vec_tensor)
+            similarities[key] = similarity
+
+        sorted_similarities = sorted(similarities.items(), key=lambda item: item[1], reverse=True)
+        top_5_similarities = sorted_similarities[:5]
+
+        for key, similarity in top_5_similarities:
+            print(f"Makale: {key}, Benzerlik: {similarity}")
+    
+    finally:
+        if os.path.exists(temp_file_path):
+            os.remove(temp_file_path)
+
+    return render_template('anasayfa.html', kullanici_adi=kullanici_adi, ilgi_alanlari=ilgi_alanlari, en_yuksek_5=en_yuksek_5, top_5_similarities=top_5_similarities)
+
+def get_interests(kullanici_adi):
+    kullanici = koleksiyon.find_one({'kullanici_adi': kullanici_adi})
+    if kullanici and 'ilgi_alanlari' in kullanici:
+        return kullanici['ilgi_alanlari']
+    else:
+        return []
+
+@app.route('/arama', methods=['POST'])
+def arama():
+    arama_kelimesi = request.form['arama_kelimesi'].lower()
+    eslesen_makaleler = []
+
+    makaleler_dizini = r"C:\Users\Vahit Yüksel\Desktop\python\yazlab3\Krapivin2009\Krapivin2009\docsutf8"
+
+    for dosya in os.listdir(makaleler_dizini):
+        if dosya.endswith(".txt"):
+            dosya_yolu = os.path.join(makaleler_dizini, dosya)
+            with open(dosya_yolu, "r", encoding="utf-8") as dosya:
+                makale_metni = dosya.read().lower() 
+                if arama_kelimesi in makale_metni:
+                    eslesen_makaleler.append(dosya.name) 
+
+    return render_template('arama_sonuc.html', eslesen_makaleler=eslesen_makaleler, arama_kelimesi=arama_kelimesi)
+
+@app.route('/makale_detay/<dosya_adi>')
+def makale_detay(dosya_adi):
+
+    makaleler_dizini = r"C:\Users\Vahit Yüksel\Desktop\python\yazlab3\Krapivin2009\Krapivin2009\docsutf8"
+
+    makale_yolu = os.path.join(makaleler_dizini, dosya_adi)
+
+    try:
+        with open(makale_yolu, "r", encoding="utf-8") as makale_dosyasi:
+            makale_icerigi = makale_dosyasi.read()
+            tespit_edilen_ilgi_alanlari = extract_interests(makale_icerigi)
+            update_interests(session.get('kullanici_adi'), tespit_edilen_ilgi_alanlari)
+
+    except FileNotFoundError:
+        return "Makale bulunamadı."
+
+    return render_template('makale_detay.html', makale_icerigi=makale_icerigi)
+
+@app.route('/add_interests', methods=['POST'])
+def add_interests():
+    data = request.json
+    makaleler = data.get('makaleler')
+    for dosya_adi in makaleler:
+        ilgi_alanlari = extract_interests_from_file(dosya_adi)
+        update_interests(session.get('kullanici_adi'), ilgi_alanlari)
+    return jsonify({'success': True})
+
+def extract_interests_from_file(dosya_adi):
+    makaleler_dizini = r"C:\Users\Vahit Yüksel\Desktop\python\yazlab3\Krapivin2009\Krapivin2009\docsutf8"
+    dosya_yolu = os.path.join(makaleler_dizini, dosya_adi)
+    with open(dosya_yolu, "r", encoding="utf-8") as dosya:
+        makale_icerigi = dosya.read()
+        tespit_edilen_ilgi_alanlari = extract_interests(makale_icerigi)
+    return tespit_edilen_ilgi_alanlari
+
+def extract_interests(makale_icerigi):
+    tespit_edilen_ilgi_alanlari = []
+    ilgi_alanlari = ["networks", "algorithm", "learning", "software"]
+    for kelime in ilgi_alanlari:
+        if kelime in makale_icerigi:
+            tespit_edilen_ilgi_alanlari.append(kelime)
+    return tespit_edilen_ilgi_alanlari
+
+def update_interests(kullanici_adi, yeni_ilgi_alanlari):
+    kullanici = koleksiyon.find_one({'kullanici_adi': kullanici_adi})
+    if kullanici:
+        ilgi_alanlari = kullanici.get('ilgi_alanlari', [])
+        ilgi_alanlari.extend(yeni_ilgi_alanlari)
+        ilgi_alanlari = list(set(ilgi_alanlari))
+        koleksiyon.update_one({'kullanici_adi': kullanici_adi}, {'$set': {'ilgi_alanlari': ilgi_alanlari}})
+
+@app.route('/kayit', methods=['GET', 'POST'])
+def kayit():
+    if request.method == 'POST':
+        kullanici_adi = request.form['kullanici_adi']
+        sifre = request.form['sifre']
+        ilgi_alanlari = request.form.getlist('ilgi_alanlari')
+        var_mi = koleksiyon.find_one({'kullanici_adi': kullanici_adi})
+        if var_mi:
+            flash('Bu kullanıcı adı zaten mevcut, lütfen farklı bir kullanıcı adı seçin.', 'danger')
+            return redirect(url_for('kayit'))
+
+        yeni_kullanici = {'kullanici_adi': kullanici_adi, 'sifre': sifre, 'ilgi_alanlari': ilgi_alanlari}
+        koleksiyon.insert_one(yeni_kullanici)
+        flash('Başarıyla kaydedildi!', 'success')
+        return redirect(url_for('index'))
+    else:
+        return render_template('kayit.html', kelimeler=kelimeler)
+
+if __name__ == '__main__':
+    app.run(debug=True)
+    client.close()

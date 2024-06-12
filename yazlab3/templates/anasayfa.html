@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Anasayfa</title>
+    <link rel="stylesheet" type="text/css" href="{{ url_for('static', filename='css/styles.css') }}">
+</head>
+<body>
+    <div class="container">
+        <h1>Hoş Geldin, {{ kullanici_adi }}!</h1>
+        <h2>İlgi Alanlarınız:</h2>
+        <ul>
+            {% for ilgi_alani in ilgi_alanlari %}
+                <li>{{ ilgi_alani }}</li>
+            {% endfor %}
+        </ul>
+        <h2>En Yüksek Fasttext 5 Benzerlik:</h2>
+        <ul>
+            {% for dosya, benzerlik in en_yuksek_5 %}
+            <div>
+                <input type="checkbox" class="makale-checkbox" id="{{ dosya }}" name="makale_checkbox" value="{{ dosya }}">
+                <label for="{{ dosya }}">{{ dosya }}</label>
+            </div>
+            {% endfor %}
+        </ul>
+        <h2>En Yüksek Scibert 5 Benzerlik:</h2>
+        <ul>
+            {% for dosya, benzerlik in top_5_similarities %}
+            <div>
+                <input type="checkbox" class="makale-checkbox" id="{{ dosya }}" name="makale_checkbox" value="{{ dosya }}">
+                <label for="{{ dosya }}">Dosya: {{ dosya }} - Benzerlik: {{ benzerlik }}</label>
+            </div>
+            {% endfor %}
+        </ul>
+        <button id="onay-button">Onay</button>
+        <form action="{{ url_for('arama') }}" method="POST">
+            <input type="text" name="arama_kelimesi" placeholder="Makale ara...">
+            <button type="submit">Ara</button>
+        </form>
+    </div>
+    <script>
+        document.addEventListener("DOMContentLoaded", function () {
+            var onayButton = document.getElementById('onay-button');
+            onayButton.addEventListener('click', function () {
+                var selectedArticles = [];
+                var checkboxes = document.querySelectorAll('input[type="checkbox"]:checked');
+                checkboxes.forEach(function (checkbox) {
+                    selectedArticles.push(checkbox.value);
+                });
+
+                if (selectedArticles.length > 0) {
+                    var xhr = new XMLHttpRequest();
+                    xhr.open("POST", "/add_interests", true);
+                    xhr.setRequestHeader("Content-Type", "application/json;charset=UTF-8");
+                    xhr.onreadystatechange = function () {
+                        if (xhr.readyState === 4 && xhr.status === 200) {
+                            console.log(xhr.responseText);
+                            alert('İlgi alanları başarıyla eklendi!');
+                        }
+                    };
+                    xhr.send(JSON.stringify({ makaleler: selectedArticles }));
+                } else {
+                    alert('Lütfen en az bir makale seçin.');
+                }
+            });
+        });
+    </script>
+</body>
+</html>

@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Giriş Yap</title>
+    <link rel="stylesheet" type="text/css" href="{{ url_for('static', filename='css/styles.css') }}">
+</head>
+<body>
+    <div class="container">
+        <h1>Giriş Yap</h1>
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                {% for category, message in messages %}
+                    <div class="alert alert-{{ category }}">
+                        {{ message }}
+                    </div>
+                {% endfor %}
+            {% endif %}
+        {% endwith %}
+        <form action="/giris" method="POST">
+            <label for="kullanici_adi">Kullanıcı Adı:</label><br>
+            <input type="text" id="kullanici_adi" name="kullanici_adi" required><br>
+            <label for="sifre">Şifre:</label><br>
+            <input type="password" id="sifre" name="sifre" required><br><br>
+            <input type="submit" value="Giriş Yap">
+        </form>
+        <p>Kayıt olmak istiyorsanız, <a href="/kayit">buraya</a> tıklayın.</p>
+    </div>
+</body>
+</html>

@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Kayıt Ol</title>
+    <link rel="stylesheet" type="text/css" href="{{ url_for('static', filename='css/styles.css') }}">
+</head>
+<body>
+    <div class="container">
+        <h1>Kayıt Ol</h1>
+        {% with messages = get_flashed_messages() %}
+            {% if messages %}
+                <div class="alert">
+                    {% for message in messages %}
+                        <p>{{ message }}</p>
+                    {% endfor %}
+                </div>
+            {% endif %}
+        {% endwith %}
+        <form action="/kayit" method="POST" id="kayitForm">
+            <label for="kullanici_adi">Kullanıcı Adı:</label><br>
+            <input type="text" id="kullanici_adi" name="kullanici_adi" required><br>
+            <label for="sifre">Şifre:</label><br>
+            <input type="password" id="sifre" name="sifre" required><br>
+            <label for="ilgi_alanlari">İlgi Alanları (En az 5 seçim yapmalısınız):</label><br>
+            <select id="ilgi_alanlari" name="ilgi_alanlari" multiple required>
+                {% for kelime in kelimeler %}
+                <option value="{{ kelime }}">{{ kelime }}</option>
+                {% endfor %}
+            </select><br><br>
+            <input type="submit" value="Kayıt Ol">
+        </form>
+
+        <p>Zaten bir hesabınız var mı? <a href="/">Giriş Yap</a></p>
+    </div>
+
+    <script>
+        document.getElementById('kayitForm').addEventListener('submit', function(event) {
+            var selectedOptions = document.querySelectorAll('#ilgi_alanlari option:checked');
+            if (selectedOptions.length < 5) {
+                alert('En az 5 ilgi alanı seçmelisiniz!');
+                event.preventDefault();
+            }
+        });
+    </script>
+</body>
+</html>

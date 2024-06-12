@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Makale Detayı</title>
+    <link rel="stylesheet" type="text/css" href="{{ url_for('static', filename='css/styles.css') }}">
+</head>
+<body>
+    <div class="container">
+        <h1>Makale Detayı</h1>
+        <h2>{{ makale_basligi }}</h2>
+        <p><strong>Yazar:</strong> {{ makale_yazari }}</p>
+        <hr>
+        <div>
+            <h3>İlgi Alanları:</h3>
+            <ul>
+                {% for ilgi_alani in tespit_edilen_ilgi_alanlari %}
+                    <li>{{ ilgi_alani }}</li>
+                {% endfor %}
+            </ul>
+        </div>
+        <div>
+            {{ makale_icerigi|safe }}
+        </div>
+        <a href="{{ url_for('anasayfa') }}">Anasayfa</a>
+    </div>
+    <ul>
+        {% for makale in makaleler %}
+            <li><a href="{{ url_for('makale_detay', dosya_adi=makale.dosya_adi) }}">{{ makale.baslik }}</a></li>
+        {% endfor %}
+    </ul>
+</body>
+</html>
